@@ -268,12 +268,26 @@ wss.on('connection', async (ws) => {
             }
 
             case "resumeConsumer": {
+                try {
 
-                break;
+                    await consumer.resume();
+                    ws.send(JSON.stringify({ type: "consumerResumed" }));
+                    break;
+                } catch (error) {
+                    console.log(`cannot resumeConsumer: ${error}`);
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: `cannot resumeConsumer: ${error}`
+                    }))
+                }
             }
 
             default:
                 console.log("Invalid msg type", message.type);
+                ws.send(JSON.stringify({
+                    type: 'invalid',
+                    message: 'invalid message send'
+                }))
 
         }
     });
