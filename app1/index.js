@@ -53,10 +53,35 @@ async function workerInit() {
 }
 
 async function createWebRtcTransport() {
-    
+  const transport = await router.createWebRtcTransport({
+    listenIps: [
+      {
+        ip: "0.0.0.0",
+        announcedIp: "127.0.0.1",
+      },
+    ],
+    enableUdp: true,
+    enableTcp: true,
+    preferUdp: true,
+    initialAvailableOutgoingBitrate: 1000000,
+  });
+
+  transport.on("dtlsstatechange", (dtlsState) => {
+    if (dtlsState === "closed") {
+      transport.close();
+    }
+  });
+
+  transport.on("close", () => {
+    console.log("transport closed");
+  });
+
+  return transport;
 }
 
-worker = workerInit();
+(async () => {
+  worker = await workerInit();
+})();
 
 wss.on("connection", async (ws) => {
   console.log("connected");
@@ -65,41 +90,127 @@ wss.on("connection", async (ws) => {
     mediaCodecs: mediaCodecs,
   });
 
-  ws.on("message", function message(data) {
-    console.log("received: %s", data);
-    switch(data.type) {
-        case "getRouterRtpCapabilities": {
-            break;
-        }
-        case "createTransport": {
-            if(data.sender) {
+  ws.on("message", async function message(data) {
+    const message = JSON.parse(data);
+    console.log("received: %s", message);
+    switch (message.type) {
+      case "getRouterRtpCapabilities": {
+        ws.send(
+          JSON.stringify({
+            type: "routerRtpCapabilities",
+            data: router.rtpCapabilities,
+          })
+        );
+        break;
+      }
+      case "createTransport": {
+        try {
+          const transport = new createWebRtcTransport();
+          if (message.producer) {
+            producerTransport = transport;
+          } else {
+            consumerTransport = transport;
+          }
 
-            } else {
+          const { id, iceParameters, iceCandidates, dtlsParameters } =
+            transport;
+          ws.send(
+            JSON.stringify({
+              type: "createTransport",
+              data: {
+                id,
+                iceParameters,
+                iceCandidates,
+                dtlsParameters,
+              },
+            })
+          );
+        } catch (e) {
+          console.error(e);
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: e.message,
+            })
+          );
+        }
+        break;
+      }
+      case "connectProducerTransport": {
+        await producerTransport.connect({
+          dtlsParameters: message.dtlsParameters,
+        });
+        ws.send(JSON.stringify({ type: "producerTransportConnected" }));
+        break;
+      }
 
-            }
-            break;
+      case "connectConsumerTransport": {
+        await consumerTransport.connect({
+          dtlsParameters: message.dtlsParameters,
+        });
+        ws.send(JSON.stringify({ type: "connectConsumerTransport" }));
+        break;
+      }
+
+      case "produce": {
+        // kind, rtpParameters
+        const { kind, rtpParameters } = message;
+        producer = await producerTransport.produce({ kind, rtpParameters });
+
+        producer.on("transportclose", () => {
+          producer.close();
+        });
+
+        ws.send(
+          JSON.stringify({
+            type: "produced",
+            data: { id: producer.id },
+          })
+        );
+        break;
+      }
+
+      case "consume": {
+        try {
+          if (!producer) {
+            throw new Error("No producer exists");
+          }
+
+          const consumer = await consumerTransport.consume({
+            producerId: producer.id,
+            rtpCapabilities: message.rtpCapabilities,
+            paused: true,
+          });
+
+          consumer.on("transportclose", () => {
+            consumer.close();
+          });
+
+          ws.send(
+            JSON.stringify({
+              type: "consumed",
+              data: {
+                id: consumer.id,
+                producerId: producer.id,
+                kind: consumer.kind,
+                rtpParameters: consumer.rtpParameters,
+              },
+            })
+          );
+        } catch (error) {
+          console.error(error);
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: error.message,
+            })
+          );
         }
-        case "connectProducerTransport": {
-            // dtlsParameters
-            break;
-        }
-        case "connectConsumerTransport": {
-            // dtlsParameters
-            break;
-        }
-        case "transport-produce": {
-            // kind, rtpParameters
-            break;
-        }
-        case "consumeMedia": {
-            // rtpCapabilities
-            break;
-        }
-        case "resumePausedConsumer": {
-            break;
-        }
-        default: 
-            console.log('Invalid msg type: ', message.type)
+        break;
+      }
+
+      default:
+        console.log("Invalid msg type: ", message.type);
     }
   });
 
