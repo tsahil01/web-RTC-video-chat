@@ -18,7 +18,7 @@ let worker: Worker;
 let router: Router | null;
 let producerTransport: Transport | null;
 let consumerTransport: Transport | null;
-let produer: Producer
+let producer: Producer
 let consumer: Consumer
 
 async function workerInit() {
@@ -115,6 +115,7 @@ wss.on('connection', async (ws) => {
                 const newTransport = await transportInit();
                 if (newTransport === null) {
                     ws.send(JSON.stringify({
+                        type: "error",
                         message: "Error creating Transport"
                     }));
                     break;
@@ -128,11 +129,11 @@ wss.on('connection', async (ws) => {
                 const { id, iceParameters, iceCandidates, dtlsParameters } = newTransport
 
                 ws.send(JSON.stringify({
-                    type: "createTransport",
+                    type: "createTransportdone",
                     data: {
-                        id, 
-                        iceParameters, 
-                        iceCandidates, 
+                        id,
+                        iceParameters,
+                        iceCandidates,
                         dtlsParameters
                     }
                 }))
@@ -140,21 +141,128 @@ wss.on('connection', async (ws) => {
             }
 
             case "connectProducerTransport": {
-
+                if (producerTransport == null) {
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: "Producer Transport is null"
+                    }));
+                    break
+                }
+                try {
+                    const { dtlsParameters } = message;
+                    await producerTransport.connect({ dtlsParameters });
+                    ws.send(JSON.stringify({
+                        type: "producerTransportConnected"
+                    }))
+                } catch (error) {
+                    console.log("Error connecting: ", error)
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: `Error: ${error}`
+                    }));
+                }
                 break;
             }
 
             case "connectConsumerTransport": {
-
+                if (consumerTransport == null) {
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: "consumer Transport is nul"
+                    }));
+                    break
+                }
+                try {
+                    const { dtlsParameters } = message;
+                    await consumerTransport.connect({ dtlsParameters });
+                    ws.send(JSON.stringify({
+                        type: "consumerTransportConnected"
+                    }))
+                } catch (error) {
+                    console.log("Error connecting: ", error)
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: `Error: ${error}`
+                    }));
+                }
                 break;
             }
 
             case "produce": {
+                if (producerTransport == null) {
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: "producer Transport is null"
+                    }));
+                    break
+                }
+
+                try {
+                    const { kind, rtpParameters } = message;
+                    producer = await producerTransport.produce({ kind, rtpParameters })
+                    producer.on("transportclose", () => {
+                        producer.close();
+                    });
+                    ws.send(JSON.stringify({
+                        type: "produce",
+                        data: { id: producer.id }
+                    }))
+                } catch (error) {
+                    console.log("Error producing: ", error);
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: "Error producing"
+                    }))
+                }
 
                 break;
             }
 
             case "consume": {
+                if (consumerTransport == null) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: "consumer Transport is null"
+                    }));
+                    break
+                }
+
+                try {
+                    const { rtpCapabilities } = message;
+                    if (!producer) {
+                        throw new Error("No producer exists");
+                    }
+
+                    consumer = await consumerTransport.consume({
+                        producerId: producer.id,
+                        rtpCapabilities,
+                        paused: true
+                    })
+                    consumer.on("transportclose", () => {
+                        consumer.close();
+                    });
+
+                    ws.send(
+                        JSON.stringify({
+                            type: "consumed",
+                            data: {
+                                id: consumer.id,
+                                producerId: producer.id,
+                                kind: consumer.kind,
+                                rtpParameters: consumer.rtpParameters,
+                            },
+                        })
+                    );
+
+                } catch (error) {
+                    console.log("Error consuming: ", error);
+                    ws.send(
+                        JSON.stringify({
+                            type: "error",
+                            message: `Error consuming: ${error}`,
+                        })
+                    );
+                }
 
                 break;
             }
