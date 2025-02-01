@@ -294,6 +294,10 @@ wss.on('connection', async (ws) => {
 
 
     ws.on('close', () => {
+        if (producerTransport) producerTransport.close()
+        if (consumerTransport) consumerTransport.close()
+        if (producer) producer.close()
+        if (consumer) consumer.close()
         console.log("Connection Closed")
     })
 
