@@ -2,7 +2,7 @@ import http from 'http'
 import express from 'express'
 import cors from 'cors'
 import { WebSocketServer } from 'ws';
-import { Consumer, Producer, Transport, Worker, Router } from 'mediasoup/node/lib/types';
+import { Consumer, Producer, Transport, Worker, Router, DtlsState } from 'mediasoup/node/lib/types';
 import { createWorker } from 'mediasoup';
 import { mediaCodecs } from './config';
 const PORT = 3000;
@@ -16,8 +16,8 @@ const wss = new WebSocketServer({ port: 8080 });
 
 let worker: Worker;
 let router: Router | null;
-let producerTransport: Transport
-let consumerTransport: Transport
+let producerTransport: Transport | null;
+let consumerTransport: Transport | null;
 let produer: Producer
 let consumer: Consumer
 
@@ -53,18 +53,129 @@ async function routerInit() {
     }
 }
 
+async function transportInit() {
+    try {
+        if (!router) {
+            console.log("No router found");
+            return null;
+        }
+
+        const transport = await router.createWebRtcTransport({
+            listenIps: [
+                {
+                    ip: "0.0.0.0",
+                    announcedIp: "127.0.0.1",
+                },
+            ],
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+            initialAvailableOutgoingBitrate: 1000000,
+        })
+
+        transport.on('dtlsstatechange', (dlsState: DtlsState) => {
+            if (dlsState === 'closed') {
+                transport.close()
+            }
+        })
+
+        transport.on('@close', () => {
+            console.log("transport closed");
+        });
+
+        return transport
+
+    } catch (error) {
+        console.log("Unable to create transport :", error);
+        return null;
+    }
+}
+
 (async () => {
     worker = await workerInit()
 })()
 
 wss.on('connection', async (ws) => {
     console.log("WS Connected");
-
     router = await routerInit();
+
+    ws.on('message', async (data: string) => {
+        const message = JSON.parse(data);
+        switch (message.type) {
+
+            case "getRouterRtpCapabilities": {
+                ws.send(JSON.stringify({
+                    type: "routerRtpCapabilities",
+                    routerRtpCapabilities: router?.rtpCapabilities
+                }));
+                break;
+            }
+
+            case "createTransport": {
+                const newTransport = await transportInit();
+                if (newTransport === null) {
+                    ws.send(JSON.stringify({
+                        message: "Error creating Transport"
+                    }));
+                    break;
+                }
+                if (message.producer) {
+                    producerTransport = newTransport;
+                } else {
+                    consumerTransport = newTransport;
+                }
+
+                const { id, iceParameters, iceCandidates, dtlsParameters } = newTransport
+
+                ws.send(JSON.stringify({
+                    type: "createTransport",
+                    data: {
+                        id, 
+                        iceParameters, 
+                        iceCandidates, 
+                        dtlsParameters
+                    }
+                }))
+                break;
+            }
+
+            case "connectProducerTransport": {
+
+                break;
+            }
+
+            case "connectConsumerTransport": {
+
+                break;
+            }
+
+            case "produce": {
+
+                break;
+            }
+
+            case "consume": {
+
+                break;
+            }
+
+            case "resumeConsumer": {
+
+                break;
+            }
+
+            default:
+                console.log("Invalid msg type", message.type);
+
+        }
+    });
+
 
     ws.on('close', () => {
         console.log("Connection Closed")
     })
+
+    ws.on("error", console.error);
 })
 
 server.listen(PORT, () => {

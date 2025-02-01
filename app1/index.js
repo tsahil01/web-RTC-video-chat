@@ -103,6 +103,7 @@ wss.on("connection", async (ws) => {
         );
         break;
       }
+      
       case "createTransport": {
         try {
           const transport = await createWebRtcTransport();
@@ -136,6 +137,7 @@ wss.on("connection", async (ws) => {
         }
         break;
       }
+
       case "connectProducerTransport": {
         await producerTransport.connect({
           dtlsParameters: message.dtlsParameters,
