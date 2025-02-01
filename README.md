@@ -1,6 +1,6 @@
 # web-RTC-video-chat
 Will be using mediasoup (maybe)
-- https://medium.com/agora-io/how-does-webrtc-work-996748603141
+- Web Socket working: https://medium.com/agora-io/how-does-webrtc-work-996748603141
 
 ## [Mediasoup](https://mediasoup.org/)
 - https://www.youtube.com/watch?v=DOe7GkQgwPo
@@ -17,7 +17,6 @@ Will be using mediasoup (maybe)
 - Router is created from Worker.
 
 ```
-
 Client A (Producer)           mediasoup Server (SFU)           Client B (Consumer)
     |                                 |                                 |
     |--- Signaling: Join Room ------> |                                 |
@@ -36,7 +35,6 @@ Client A (Producer)           mediasoup Server (SFU)           Client B (Consume
     |--- RTP Packets (VP8) ---------> |                                 |
     |                                 |--- Forward RTP ---------------->|
     |                                 |                                 |
-
 ```
 
 ```
