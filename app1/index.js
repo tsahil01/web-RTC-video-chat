@@ -105,7 +105,7 @@ wss.on("connection", async (ws) => {
       }
       case "createTransport": {
         try {
-          const transport = new createWebRtcTransport();
+          const transport = await createWebRtcTransport();
           if (message.producer) {
             producerTransport = transport;
           } else {
@@ -148,7 +148,7 @@ wss.on("connection", async (ws) => {
         await consumerTransport.connect({
           dtlsParameters: message.dtlsParameters,
         });
-        ws.send(JSON.stringify({ type: "connectConsumerTransport" }));
+        ws.send(JSON.stringify({ type: "consumerTransportConnected" }));
         break;
       }
 
@@ -176,7 +176,7 @@ wss.on("connection", async (ws) => {
             throw new Error("No producer exists");
           }
 
-          const consumer = await consumerTransport.consume({
+          consumer = await consumerTransport.consume({
             producerId: producer.id,
             rtpCapabilities: message.rtpCapabilities,
             paused: true,
@@ -206,6 +206,12 @@ wss.on("connection", async (ws) => {
             })
           );
         }
+        break;
+      }
+
+      case "resumeConsumer": {
+        await consumer.resume();
+        ws.send(JSON.stringify({ type: "consumerResumed" }));
         break;
       }
 
