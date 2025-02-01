@@ -15,3 +15,22 @@ Will be using mediasoup (maybe)
 
 
 - Router is created from Worker.
+
+Client A (Producer)           mediasoup Server (SFU)           Client B (Consumer)
+    |                                 |                                 |
+    |--- Signaling: Join Room ------> |                                 |
+    |                                 |                                 |
+    |<---- ICE/DTLS Params ---------- |                                 |
+    |--- ICE Candidates ------------> |                                 |
+    |                                 |                                 |
+    |--- DTLS Handshake ------------- |                                 |
+    |                                 |                                 |
+    |--- produce() (Video Track) ---> |                                 |
+    |                                 |--- Notify New Producer -------> |
+    |                                 |                                 |
+    |                                 |<--- Request Consumer -----------|
+    |                                 |--- createConsumer() ----------->|
+    |                                 |                                 |
+    |--- RTP Packets (VP8) ---------> |                                 |
+    |                                 |--- Forward RTP ---------------->|
+    |                                 |                                 |
