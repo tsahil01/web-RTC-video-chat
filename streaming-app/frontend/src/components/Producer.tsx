@@ -19,13 +19,13 @@ export default function Producer() {
             if (videoRef.current) {
                 const track = stream.getVideoTracks()[0];
                 videoRef.current.srcObject = stream;
-                setParams((current) => ({ ...current, track }));
+                setParams({ track });
             }
         } catch (error) {
             console.error("Error accessing camera:", error);
         }
     };
-
+    
     const createDevice = async () => {
         try {
             console.log("Creating device");
@@ -87,8 +87,9 @@ export default function Producer() {
                                 dtlsParameters: dtlsParameters
                             }));
                         });
+                        
 
-                        transport?.on('produce', async (params) => {
+                        transport?.on("produce", async (params) => {
                             console.log("Producing");
                             socket?.send(JSON.stringify({
                                 type: "produce",
@@ -137,15 +138,26 @@ export default function Producer() {
     }
 
     const connectSendTransport = async () => {
-        if (!producerTransport || !params) return;
-        const localProducer = await producerTransport.produce(params);
-        localProducer.on("trackended", () => {
-            console.log("trackended");
-        });
-        localProducer.on("transportclose", () => {
-            console.log("transportclose");
-        });
+        if (!producerTransport || !params?.track) return;
+    
+        try {
+            const producer = await producerTransport.produce({
+                track: params.track,
+            });
+    
+            producer.on("trackended", () => {
+                console.log("Track ended");
+            });
+    
+            producer.on("transportclose", () => {
+                console.log("Transport closed");
+            });
+    
+        } catch (error) {
+            console.error("Error producing:", error);
+        }
     };
+
 
     return <>
         <h1>Producer</h1>
@@ -155,6 +167,5 @@ export default function Producer() {
         <button onClick={createDevice}>Create Device</button>
         <button onClick={createTransport}>Create Transport</button>
         <button onClick={connectSendTransport}>Connect Send Transport</button>
-
     </>
 }
