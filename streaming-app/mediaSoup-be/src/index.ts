@@ -92,15 +92,15 @@ async function transportInit() {
 }
 
 (async () => {
-    worker = await workerInit()
+    worker = await workerInit();
+    router = await routerInit();
 })()
 
 wss.on('connection', async (ws) => {
     console.log("WS Connected");
-    router = await routerInit();
-
     ws.on('message', async (data: string) => {
         const message = JSON.parse(data);
+        console.log("Message received: ", message);
         switch (message.type) {
 
             case "getRouterRtpCapabilities": {
