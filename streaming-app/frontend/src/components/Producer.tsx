@@ -7,7 +7,7 @@ export default function Producer() {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const [params, setParams] = useState<{ track: MediaStreamTrack } | null>(null);
 
-    const [device, setDevice] = useState<Device | null>(null);
+    const deviceRef = useRef<Device | null>(null);
     const [socket, setSocket] = useState<WebSocket | null>(null);
     const [rtpCapabilities, setRtpCapabilities] = useState<RtpCapabilities | null>(null);
     const [producerTransport, setProducerTransport] = useState<Transport | null>(null);
@@ -27,14 +27,15 @@ export default function Producer() {
     };
 
     const createDevice = async () => {
-        console.log("Creating device");
         try {
-            const device = new Device();
-            setDevice(device);
-            console.log("Device created");
+            console.log("Creating device");
             if (!rtpCapabilities) return;
+            const device = new Device();
+            console.log("Device created", device);
+            deviceRef.current = device;
+            console.log("Loading device");
             await device.load({ routerRtpCapabilities: rtpCapabilities });
-            console.log("Device loaded");
+            console.log("Device loaded", device);
         } catch (error: unknown) {
             console.log(error);
             if (error instanceof Error && error.name === "UnsupportedError") {
@@ -66,11 +67,9 @@ export default function Producer() {
                     }
 
                     case "createTransportdone": {
-                        if (!device) {
-                            console.error("Device not initialized");
-                            return;
-                        }
-                        const transport = device.createSendTransport({
+                        console.log("Creating transport");
+                        console.log("Device", deviceRef.current);
+                        const transport = deviceRef.current?.createSendTransport({
                             id: message.data.id,
                             iceParameters: message.data.iceParameters,
                             iceCandidates: message.data.iceCandidates,
@@ -138,17 +137,12 @@ export default function Producer() {
     }
 
     const connectSendTransport = async () => {
-        console.log("Connecting send transport");
-        if (!producerTransport) {
-            console.error("Producer transport not initialized");
-            return;
-        }
-        const localProducer = await producerTransport?.produce(params!);
-        console.log("Local producer created");
-        localProducer?.on("trackended", () => {
+        if (!producerTransport || !params) return;
+        const localProducer = await producerTransport.produce(params);
+        localProducer.on("trackended", () => {
             console.log("trackended");
         });
-        localProducer?.on("transportclose", () => {
+        localProducer.on("transportclose", () => {
             console.log("transportclose");
         });
     };
