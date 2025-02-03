@@ -5,26 +5,34 @@ import { useEffect, useRef, useState } from "react";
 
 export default function Producer() {
     const videoRef = useRef<HTMLVideoElement | null>(null);
-    const [params, setParams] = useState<{ track: MediaStreamTrack } | null>(null);
-
+    const [params, setParams] = useState({
+        encoding: [
+          { rid: "r0", maxBitrate: 100000, scalabilityMode: "S1T3" }, // Lowest quality layer
+          { rid: "r1", maxBitrate: 300000, scalabilityMode: "S1T3" }, // Middle quality layer
+          { rid: "r2", maxBitrate: 900000, scalabilityMode: "S1T3" }, // Highest quality layer
+        ],
+        codecOptions: { videoGoogleStartBitrate: 1000 }, // Initial bitrate
+        track: null as MediaStreamTrack | null, // Add track property
+      });
     const deviceRef = useRef<Device | null>(null);
-    const [socket, setSocket] = useState<WebSocket | null>(null);
+    const socketRef = useRef<WebSocket | null>(null);
     const [rtpCapabilities, setRtpCapabilities] = useState<RtpCapabilities | null>(null);
     const [producerTransport, setProducerTransport] = useState<Transport | null>(null);
 
 
     const startCamera = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            if (videoRef.current) {
-                const track = stream.getVideoTracks()[0];
-                videoRef.current.srcObject = stream;
-                setParams({ track });
-            }
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (videoRef.current) {
+            const track = stream.getVideoTracks()[0];
+            videoRef.current.srcObject = stream;
+            setParams((current) => ({ ...current, track }));
+          }
         } catch (error) {
-            console.error("Error accessing camera:", error);
+          console.error("Error accessing camera:", error);
         }
-    };
+      };
+
     
     const createDevice = async () => {
         try {
@@ -46,10 +54,11 @@ export default function Producer() {
 
     useEffect(() => {
         const ws = new WebSocket("ws://localhost:8080");
-        setSocket(ws);
+        socketRef.current = ws;
 
         ws.onopen = async () => {
             console.log("Connected to the server");
+            startCamera();
             ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 console.log("Message received: ", message);
@@ -80,22 +89,39 @@ export default function Producer() {
                             setProducerTransport(transport);
                         }
 
-                        transport?.on('connect', async (dtlsParameters) => {
-                            console.log("Transport connected");
-                            socket?.send(JSON.stringify({
-                                type: "connectProducerTransport",
-                                dtlsParameters: dtlsParameters
-                            }));
+                        transport?.on('connect', ({ dtlsParameters }, callback, errback) => {
+                            try {
+
+                                console.log("Transport connected");
+                                socketRef.current?.send(JSON.stringify({
+                                    type: "connectProducerTransport",
+                                    dtlsParameters: dtlsParameters
+                                }));
+                                callback();
+                            } catch (error) {
+                                console.error("Error connecting transport: ", error);
+                                errback(error as Error);
+                            }
                         });
                         
 
-                        transport?.on("produce", async (params) => {
-                            console.log("Producing");
-                            socket?.send(JSON.stringify({
-                                type: "produce",
-                                kind: params.kind,
-                                rtpParameters: params.rtpParameters
-                            }));
+                        transport?.on("produce", async (parameters, callback, errback) => {
+                            try {
+                                console.log("Producing");
+                                console.log("Parameters: ", parameters);
+                                console.log("Socket: ", socketRef.current);
+                                socketRef.current?.send(JSON.stringify({
+                                    type: "produce",
+                                    kind: parameters.kind,
+                                    rtpParameters: parameters.rtpParameters
+                                }));
+                                callback({
+                                    id: "1234"
+                                })
+                            } catch (error) {
+                                console.error("Error producing: ", error);
+                                errback(error as Error);
+                            }
                         });
 
                         break;
@@ -126,12 +152,12 @@ export default function Producer() {
 
 
     async function getRouterRtpCapabilities() {
-        socket?.send(JSON.stringify({ type: "getRouterRtpCapabilities" }));
+        socketRef.current?.send(JSON.stringify({ type: "getRouterRtpCapabilities" }));
     }
 
     function createTransport() {
         console.log("Creating transport");
-        socket?.send(JSON.stringify({
+        socketRef.current?.send(JSON.stringify({
             type: "createTransport",
             producer: true
         }));
