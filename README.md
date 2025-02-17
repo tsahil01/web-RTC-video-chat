@@ -1,6 +1,6 @@
 # web-RTC-video-chat
 Will be using mediasoup (maybe)
-- Web Socket working: https://medium.com/agora-io/how-does-webrtc-work-996748603141
+- Web RTC working: https://medium.com/agora-io/how-does-webrtc-work-996748603141
 
 ## [Mediasoup](https://mediasoup.org/)
 - https://www.youtube.com/watch?v=DOe7GkQgwPo
